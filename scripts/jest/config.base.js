@@ -16,6 +16,9 @@ module.exports = {
   setupFilesAfterEnv: [require.resolve('./setupTests.js')],
   // Only include files directly in __tests__, not in nested folders.
   testRegex: '/__tests__/[^/]*(\\.js|\\.coffee|[^d]\\.ts)$',
+  // testRegex: '/__tests__/ReactSuspense-test.internal(\\.js|\\.coffee|[^d]\\.ts)$',
+  // testRegex: '/__tests__/ReactUpdates-test(\\.js|\\.coffee|[^d]\\.ts)$',
+  // testNamePattern: 'should queue nested updates',
   moduleFileExtensions: ['js', 'json', 'node', 'coffee', 'ts'],
   rootDir: process.cwd(),
   roots: ['<rootDir>/packages', '<rootDir>/scripts'],
