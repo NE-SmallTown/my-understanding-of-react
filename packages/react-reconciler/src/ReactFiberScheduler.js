@@ -2370,7 +2370,6 @@ function shouldYield() {
     return true;
   }
   if (
-    deadline === null ||
     deadline.timeRemaining() > timeHeuristicForUnitOfWork
   ) {
     // Disregard deadline.didTimeout. Only expired work should be flushed
