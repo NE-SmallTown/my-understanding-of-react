@@ -2369,9 +2369,7 @@ function shouldYield() {
   if (deadlineDidExpire) {
     return true;
   }
-  if (
-    deadline.timeRemaining() > timeHeuristicForUnitOfWork
-  ) {
+  if (deadline.timeRemaining() > timeHeuristicForUnitOfWork) {
     // Disregard deadline.didTimeout. Only expired work should be flushed
     // during a timeout. This path is only hit for non-expired work.
     return false;
