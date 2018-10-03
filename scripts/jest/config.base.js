@@ -16,8 +16,8 @@ module.exports = {
   setupFilesAfterEnv: [require.resolve('./setupTests.js')],
   // Only include files directly in __tests__, not in nested folders.
   testRegex: '/__tests__/[^/]*(\\.js|\\.coffee|[^d]\\.ts)$',
-  //testRegex: '/__tests__/ReactDOMFiberAsync-test.internal(\\.js|\\.coffee|[^d]\\.ts)$',
-  //testNamePattern: 'flushSync throws if already performing work',
+  //testRegex: '/__tests__/ReactDOMTextComponent-test(\\.js|\\.coffee|[^d]\\.ts)$',
+  //testNamePattern: 'can be toggled in and out of the markup',
   moduleFileExtensions: ['js', 'json', 'node', 'coffee', 'ts'],
   rootDir: process.cwd(),
   roots: ['<rootDir>/packages', '<rootDir>/scripts'],

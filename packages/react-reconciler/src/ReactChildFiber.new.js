@@ -325,10 +325,12 @@ function ChildReconciler(shouldTrackSideEffects) {
     newIndex: number,
   ): number {
     newFiber.index = newIndex;
+    // 如果当前节点是在 mount 的情况（之前已经 mount 过了，但是之前是 null，这种再次被执行的时候也算是 mount），直接返回即可
     if (!shouldTrackSideEffects) {
       // Noop.
       return lastPlacedIndex;
     }
+    // wipFiber 的 alternate 其实就是 current fiber
     const current = newFiber.alternate;
     if (current !== null) {
       const oldIndex = current.index;
@@ -362,12 +364,14 @@ function ChildReconciler(shouldTrackSideEffects) {
     textContent: string,
     lanes: Lanes,
   ) {
+    // 如果之前不是 text 节点，那么需要建立 textFiber
     if (current === null || current.tag !== HostText) {
       // Insert
       const created = createFiberFromText(textContent, returnFiber.mode, lanes);
       created.return = returnFiber;
       return created;
     } else {
+      // 如果之前是 text 节点，那么直接使用之前的 textFiber
       // Update
       const existing = useFiber(current, textContent);
       existing.return = returnFiber;
@@ -560,6 +564,8 @@ function ChildReconciler(shouldTrackSideEffects) {
       // Text nodes don't have keys. If the previous node is implicitly keyed
       // we can continue to replace it without aborting even if it is not a text
       // node.
+      // 如果之前的 fiber 有 key，而新的 fiber 又是一个 string 或者 number
+      // 那么直接终止更新而不是用新的 string 或者 number 把之前的替换掉，因为之前的 fiber 很可能被复用（有 key）
       if (key !== null) {
         return null;
       }
@@ -751,6 +757,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     // If you change this code, also update reconcileChildrenIterator() which
     // uses the same algorithm.
 
+    // 检验数组的 key
     if (__DEV__) {
       // First, validate keys.
       let knownKeys = null;
@@ -763,10 +770,12 @@ function ChildReconciler(shouldTrackSideEffects) {
     let resultingFirstChild: Fiber | null = null;
     let previousNewFiber: Fiber | null = null;
 
-    let oldFiber = currentFirstChild;
+    let oldFiber = currentFirstChild; // 旧的节点，一开始是 null
     let lastPlacedIndex = 0;
     let newIdx = 0;
     let nextOldFiber = null;
+    // 下面的是 diff 算法的过程
+
     for (; oldFiber !== null && newIdx < newChildren.length; newIdx++) {
       if (oldFiber.index > newIdx) {
         nextOldFiber = oldFiber;
@@ -777,7 +786,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       const newFiber = updateSlot(
         returnFiber,
         oldFiber,
-        newChildren[newIdx],
+        newChildren[newIdx], // 新的节点
         lanes,
       );
       if (newFiber === null) {
@@ -818,21 +827,27 @@ function ChildReconciler(shouldTrackSideEffects) {
       return resultingFirstChild;
     }
 
+    // oldFiber === null 说明之前这个位置就没有节点或者节点是 null，即一开始初次渲染时的情况
+    // 所以新的节点直接插入即可
     if (oldFiber === null) {
       // If we don't have any more existing children we can choose a fast path
       // since the rest will all be insertions.
       for (; newIdx < newChildren.length; newIdx++) {
         const newFiber = createChild(returnFiber, newChildren[newIdx], lanes);
+        // 不合法的 JSX 类型会返回 null
         if (newFiber === null) {
           continue;
         }
+        // lastPlacedIndex 永远是最近一次执行插入操作的时候那个被插入的 fiber 在对应的 children 里的 index
         lastPlacedIndex = placeChild(newFiber, lastPlacedIndex, newIdx);
         if (previousNewFiber === null) {
           // TODO: Move out of the loop. This only happens for the first run.
           resultingFirstChild = newFiber;
         } else {
+          // 如果上一个插入的 fiber 不为 null，那么应该把当前插入的 fiber 设置为它的 sibling
           previousNewFiber.sibling = newFiber;
         }
+        // previousNewFiber 永远是新插入的 fiber
         previousNewFiber = newFiber;
       }
       return resultingFirstChild;
@@ -862,6 +877,7 @@ function ChildReconciler(shouldTrackSideEffects) {
             );
           }
         }
+        // ？？？？？？？改变 fiber 的 index
         lastPlacedIndex = placeChild(newFiber, lastPlacedIndex, newIdx);
         if (previousNewFiber === null) {
           resultingFirstChild = newFiber;
@@ -1265,6 +1281,7 @@ function ChildReconciler(shouldTrackSideEffects) {
           }
       }
 
+      // 最常见的情况，children 是一个数组
       if (isArray(newChild)) {
         return reconcileChildrenArray(
           returnFiber,
@@ -1274,6 +1291,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         );
       }
 
+      // 非数组，但是是可迭代的对象，如 generator，有 '@@iterator' key 的对象等
       if (getIteratorFn(newChild)) {
         return reconcileChildrenIterator(
           returnFiber,

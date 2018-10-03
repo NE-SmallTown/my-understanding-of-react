@@ -169,7 +169,8 @@ function validateChildKeys(node, parentType) {
   if (typeof node !== 'object') {
     return;
   }
-  if (isArray(node)) {
+  // JSX 里面的 js 数组会走 Array.isArray(node) 分支，会检验一次 key
+  if (Array.isArray(node)) {
     for (let i = 0; i < node.length; i++) {
       const child = node[i];
       if (isValidElement(child)) {
@@ -177,6 +178,8 @@ function validateChildKeys(node, parentType) {
       }
     }
   } else if (isValidElement(node)) {
+    // 而普通的节点会走 isValidElement(node) 分支，这些节点不需要检验 key
+    // 其实是因为没 key，不过这无所谓，因为对于组件有 sCU。以前的 react 好像会给一个随机的 key，现在不会了
     // This element was passed in a valid location.
     if (node._store) {
       node._store.validated = true;
