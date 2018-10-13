@@ -776,6 +776,9 @@ function ChildReconciler(shouldTrackSideEffects) {
     let nextOldFiber = null;
     // 下面的是 diff 算法的过程
 
+    // oldFiber 由于复用 fiber 关系，如果之前有更新过，那么这次更新的时候 oldFiber 还是上一次
+    // 更新完后的父 fiber 里的第一个 child，如果它的 index 也还是反应的之前父 fiber 里 child 应该的 index
+    // 所以可能出现 oldFiber.index > newIdx，比如 oldFiber.index 是 1（{null}<div />{null} 这种），newIdx 一开始是 0
     for (; oldFiber !== null && newIdx < newChildren.length; newIdx++) {
       if (oldFiber.index > newIdx) {
         nextOldFiber = oldFiber;
@@ -803,6 +806,8 @@ function ChildReconciler(shouldTrackSideEffects) {
         if (oldFiber && newFiber.alternate === null) {
           // We matched the slot, but we didn't reuse the existing fiber, so we
           // need to delete the existing child.
+          // 如果这种按照顺序的第一个比第一个第二个比第二个不能复用之前的 fiber（即 newFiber.alternate === null），那么直接删除
+          // 之前的 child，再插入
           deleteChild(returnFiber, oldFiber);
         }
       }
@@ -827,7 +832,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       return resultingFirstChild;
     }
 
-    // oldFiber === null 说明之前这个位置就没有节点或者节点是 null，即一开始初次渲染时的情况
+    // oldFiber === null 说明之前这个位置就没有节点或者节点是 null
     // 所以新的节点直接插入即可
     if (oldFiber === null) {
       // If we don't have any more existing children we can choose a fast path
@@ -1114,6 +1119,9 @@ function ChildReconciler(shouldTrackSideEffects) {
   ): Fiber {
     const key = element.key;
     let child = currentFirstChild;
+    // 如果当前的第一个 child 的 key 和现在的第一个 child 的 key 一样
+    // 那么把当前的除了第一个 child 以外的 child 都删掉（打上 tag）
+    // 如果不一样，那么把当前的所有 child 都删掉（打上 tag），每删一个再比较一次 key
     while (child !== null) {
       // TODO: If key === null and child.key === null, then this only applies to
       // the first item in the list.
