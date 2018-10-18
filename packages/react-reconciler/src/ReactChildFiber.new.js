@@ -324,14 +324,18 @@ function ChildReconciler(shouldTrackSideEffects) {
     lastPlacedIndex: number,
     newIndex: number,
   ): number {
+    // 新的 fiber 是根据原来的 fiber 创建的，在这里需要更新它的 index（即在插入或者移动之后他的 index 应该是在新的
+    // children 结构中的 index）
     newFiber.index = newIndex;
-    // 如果当前节点是在 mount 的情况（之前已经 mount 过了，但是之前是 null，这种再次被执行的时候也算是 mount），直接返回即可
     if (!shouldTrackSideEffects) {
       // Noop.
       return lastPlacedIndex;
     }
     // wipFiber 的 alternate 其实就是 current fiber
     const current = newFiber.alternate;
+    // 因为 newFiber 是根据对应的 current 创建的，如果没有对应的 current（current 为 null 或者类型不符合）
+    // 那么就是新创建的 fiber，否则是复用的之前的 fiber。新创建的话是没有 alternate 属性的。
+    // 所以 current !== null 说明这是一个 update 操作，而不是 mount 操作
     if (current !== null) {
       const oldIndex = current.index;
       if (oldIndex < lastPlacedIndex) {
@@ -780,6 +784,28 @@ function ChildReconciler(shouldTrackSideEffects) {
     // 更新完后的父 fiber 里的第一个 child，如果它的 index 也还是反应的之前父 fiber 里 child 应该的 index
     // 所以可能出现 oldFiber.index > newIdx，比如 oldFiber.index 是 1（{null}<div />{null} 这种），newIdx 一开始是 0
     for (; oldFiber !== null && newIdx < newChildren.length; newIdx++) {
+      // oldFiber.index > newIdx 只可能是在之前的 children 结构中 oldFiber 的上一个或者多个兄弟节点是 null
+      // 而 null 最后是会在 DOM 中被删除的，所以 oldFiber 一开始不是从 null 而是从非 null 的节点开始的
+      // 比如：
+      //     null                                           'foo'
+      //     div           ------------>>>>>>>>>>>           div
+      //     null                                           'bar'
+      // 对应这里的情况，循环一开始的时候，oldFiber 就是左侧的 div，oldFiber 的 index 为 1
+      // 所以这里在下一轮或者多轮循环中还是处理 oldFiber（即 nextOldFiber = oldFiber），并且把 oldFiber 置为了 null（因为本身就应该是 null 嘛）
+      // 为什么要在下一轮或者多轮循环中还是处理 oldFiber 呢？因为你想呀，oldFiber 上一个或者多个兄弟节点是 null，说明在更新当中
+      // 的 children 和这个 null 很可能是对应的啊，就是说这个 null 实际上也是对应一个节点的（这里的 'foo'），只是它现在是 null，之后可能就不是 null 了
+      // 最常见的就是 { this.state.show && <...> } 这种情况对吧。
+      // 所以说，拿 null 的下一个或者多个之后的节点（即这里的 oldFiber，即左侧的 div）去和新的 children 里与这个 null 的位置对应的节点去比（即 'foo'）
+      // 多半是没有价值的，不能最大化利用的。所以正常的来说，应该拿 oldFiber 去和新的 children 中与这个 oldFiber 对应的节点（即右侧的 div）
+      // 也就是 null 的下一个或者多个之后的节点（即非 null 的节点）去比。这样才是真正的「一一对应」的关系。所以我们需要在下一轮循环中
+      // 还是处理 oldFiber 而不是 oldFiber.sibling。当然了，也不会直接跳到下一轮循环去，因为虽然本轮循环的对比不会使 oldFiber 和对应的
+      // 新的 children 的节点进行比较，但是仍然是有必要的。因为新的 children 中与 oldFiber 对应的节点的上一个或者多个节点（即 'foo'）自身肯定也是需要插入的
+      // 这样就是比较合理的方式了。
+      // 还需要值得注意的是，一旦找到匹配的，就不会再来比较了，也就是说：
+      //   <Foo />              --------->>>>>>         <Bar />
+      //   <Bar />              --------->>>>>>         <Foo />
+      // 类似这样的，更新的时候，Foo 和 Bar 的 key 一致（都是 null），但是它们的 type 不同（一个是 Foo 一个是 Bar）
+      // 那么就会**创建 Bar **并进行插入替换，但是我们知道，理想的应该是更新而不是插入。所以这种情况下，给她们都赋值一个显式的 key 是非常有必要的
       if (oldFiber.index > newIdx) {
         nextOldFiber = oldFiber;
         oldFiber = null;
