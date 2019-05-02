@@ -44,10 +44,11 @@ function startProfilerTimer(fiber: Fiber): void {
     return;
   }
 
-  profilerStartTime = now();
+  const currentTime = now();
+  profilerStartTime = currentTime;
 
   if (((fiber.actualStartTime: any): number) < 0) {
-    fiber.actualStartTime = now();
+    fiber.actualStartTime = currentTime;
   }
 }
 
