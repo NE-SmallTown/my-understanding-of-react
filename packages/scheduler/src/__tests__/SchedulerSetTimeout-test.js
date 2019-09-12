@@ -68,6 +68,7 @@ describe('SchedulerNoDOM', () => {
     expect(log).toEqual(['C', 'D', 'A', 'B']);
   });
 
+  // no DOM 环境下并没有 catch 住然后又触发 poseMessage 的过程，所以遇到 error 就停了不执行力，直到下次执行（当然，已经执行过的不会再执行，这个都一样）
   it('handles errors', () => {
     let log = [];
 
