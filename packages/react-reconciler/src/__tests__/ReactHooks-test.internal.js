@@ -508,15 +508,19 @@ describe('ReactHooks', () => {
         return value;
       });
     };
+    // batchedUpdates(fn)/unBatchedUpdates(fn), Sync/Concurrent 的区别就在于，fn 里面有很多 update，是每个 update 执行完就去 renderRoot
+    // 还是全部执行完再去 renderRoot，如果是全部执行完再去，那么是执行完就立即去 renderRoot，还是等一会（Concurrent）再去
     ReactTestRenderer.unstable_batchedUpdates(() => {
       update(0);
       update(0);
       update(0);
-      update(1);
+      update(1); // 这里 eager 计算之后发现不一样，所以会触发 scheduleWork
       update(2);
       update(3);
     });
 
+    // toHaveYielded 是直接判断是不是相等，也就是说，执行到这的时候 yield 的是什么就判断什么
+    // 同时会清空已 yield 的数组
     expect(Scheduler).toHaveYielded([
       // The first four updates were eagerly computed, because the queue is
       // empty before each one.
@@ -525,11 +529,15 @@ describe('ReactHooks', () => {
       'Compute state (0 -> 0)',
       // The fourth update doesn't bail out
       'Compute state (0 -> 1)',
+      // 执行到这触发了 scheduleWork，所以 `fiber.expirationTime === NoWork` 就不成立了
+      // 所以后面的 update 就不会去 eager 计算进而触发上面 update 里的 action 回调了
+      // 所以已经 yielded 的只有前四个，后面的则是异步的，需要 flush 后才能知道
       // so subsequent updates can't be eagerly computed.
     ]);
 
     // Now let's enter the render phase
     expect(Scheduler).toFlushAndYield([
+      // 所以这里说不会再计算的意思就是，yield 的数组已经清空了，这里直接从 1 开始，没有再去调之前的
       // We don't need to re-compute the first four updates. Only the final two.
       'Compute state (1 -> 2)',
       'Compute state (2 -> 3)',
