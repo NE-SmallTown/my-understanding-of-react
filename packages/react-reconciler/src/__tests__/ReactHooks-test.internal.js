@@ -586,6 +586,7 @@ describe('ReactHooks', () => {
 
     // but before it's flushed, a higher priority update interrupts it.
     root.unstable_flushSync(() => {
+      // TODO 这里有点意思，没有先去 flush 之前的？？？？是因为 higher 的原因吗，之前测的是同一优先级的？？？
       update(n => n + 5);
     });
     expect(Scheduler).toHaveYielded([
