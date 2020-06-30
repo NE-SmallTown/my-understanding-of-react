@@ -147,6 +147,8 @@
     <script>
       const {clipboard} = require("electron");
       const port = process.env.PORT || 8097;
+      const qs = require('query-string')
+      const startServerOptions = qs.parse(global.location.search, {parseBooleans: true})
       const localIp = require("ip").address();
       const $ = document.querySelector.bind(document);
       const $promptDiv = $("#box-content-prompt");
@@ -184,12 +186,12 @@
       });
 
       const $localhost = $("#localhost");
-      $localhost.innerText = `<script src="http://localhost:${port}"></` + 'script>';
+      $localhost.innerText = `<script src="http(s)://localhost:${port}"></` + 'script>';
       $localhost.addEventListener('click', selectAllAndCopy);
       $localhost.addEventListener('focus', selectAllAndCopy);
 
       const $byIp = $("#byip");
-      $byIp.innerText = `<script src="http://${localIp}:${port}"></` + 'script>';
+      $byIp.innerText = `<script src="http(s)://${localIp}:${port}"></` + 'script>';
       $byIp.addEventListener('click', selectAllAndCopy);
       $byIp.addEventListener('focus', selectAllAndCopy);
 
@@ -211,7 +213,7 @@
             element.innerText = status;
           }
         })
-        .startServer(port);
+        .startServer(port, startServerOptions);
     </script>
   </body>
 </html>

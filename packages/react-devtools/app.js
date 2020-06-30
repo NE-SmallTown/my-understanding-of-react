@@ -9,6 +9,7 @@
 
 const {app, BrowserWindow} = require('electron'); // Module to create native browser window.
 const {join} = require('path');
+const qs = require('query-string');
 
 const argv = require('minimist')(process.argv.slice(2));
 const projectRoots = argv._;
@@ -32,8 +33,12 @@ app.on('ready', function() {
     },
   });
 
+  const queryStr = qs.stringify({
+    https: argv.https
+  })
+
   // and load the index.html of the app.
-  mainWindow.loadURL('file://' + __dirname + '/app.html'); // eslint-disable-line no-path-concat
+  mainWindow.loadURL('file://' + __dirname + '/app.html?' + queryStr); // eslint-disable-line no-path-concat
   mainWindow.webContents.executeJavaScript(
     // We use this so that RN can keep relative JSX __source filenames
     // but "click to open in editor" still works. js1 passes project roots

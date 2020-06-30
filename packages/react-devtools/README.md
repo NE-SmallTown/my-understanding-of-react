@@ -109,6 +109,12 @@ Or you could develop with a local HTTP server [like `serve`](https://www.npmjs.c
 
 **If you still have issues** please [report them](https://github.com/facebook/react/issues/new?labels=Component:%20Developer%20Tools). Don't forget to specify your OS, browser version, extension version, and the exact instructions to reproduce the issue with a screenshot.
 
+## How to use https
+
+```sh
+react-devtools --https
+```
+
 ## Local development
 The standalone DevTools app can be built and tested from source following the instructions below.
 

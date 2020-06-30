@@ -80,7 +80,7 @@ export function connectToDevTools(options: ?ConnectOptions) {
   let bridge: BackendBridge | null = null;
 
   const messageListeners = [];
-  const uri = 'ws://' + host + ':' + port;
+  const uri = 'wss://' + host + ':' + port;
 
   // If existing websocket is passed, use it.
   // This is necessary to support our custom integrations.

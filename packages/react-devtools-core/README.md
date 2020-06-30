@@ -35,7 +35,7 @@ require("react-devtools-core/standalone")
   .setStatusListener(status => {
     // This callback is optional...
   })
-  .startServer(port);
+  .startServer(port, options);
 ```
 
 Reference the `react-devtools` package for a complete integration example.

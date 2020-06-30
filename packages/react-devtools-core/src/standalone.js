@@ -22,8 +22,12 @@ import {
   getSavedComponentFilters,
 } from 'react-devtools-shared/src/utils';
 import {Server} from 'ws';
-import {join} from 'path';
-import {readFileSync} from 'fs';
+import {join, resolve} from 'path';
+import {readFileSync, writeFileSync, lstatSync, realpathSync, existsSync, statSync} from 'fs';
+import http from 'http';
+import https from 'https';
+import selfsigned from 'selfsigned';
+import del from 'del'
 import {installHook} from 'react-devtools-shared/src/hook';
 import DevTools from 'react-devtools-shared/src/devtools/views/DevTools';
 import {doesFilePathExist, launchEditor} from './editor';
@@ -35,6 +39,13 @@ import type {InspectedElement} from 'react-devtools-shared/src/devtools/views/Co
 installHook(window);
 
 export type StatusListener = (message: string) => void;
+
+export type StartServerOptions = {
+  https?: {
+    key: string,
+    cert: string,
+  } | boolean,
+};
 
 let node: HTMLElement = ((null: any): HTMLElement);
 let nodeWaitingToConnectHTML: string = '';
@@ -242,9 +253,50 @@ function connectToSocket(socket: WebSocket) {
   };
 }
 
-function startServer(port?: number = 8097) {
-  const httpServer = require('http').createServer();
-  const server = new Server({server: httpServer});
+function startServer(port?: number = 8097, options) {
+  let httpServer
+  let server
+  if (options.https) {
+    if (typeof options.https === 'boolean') {
+      const fakeCert = getCertificate()
+
+      options.https = {
+        key: fakeCert.private,
+        cert: fakeCert.cert
+      }
+    } else if (typeof options.https === 'object') {
+      for (const property of ['key', 'cert']) {
+        const value = options.https[property];
+        const isBuffer = value instanceof Buffer;
+
+        if (value && !isBuffer) {
+          let stats = null;
+
+          try {
+            stats = lstatSync(realpathSync(value)).isFile();
+          } catch (error) {
+            // ignore error
+          }
+
+          // It is file
+          options.https[property] = stats
+            ? readFileSync(resolve(value))
+            : value;
+        }
+      }
+    } else {
+      log.warn(
+        `The 'https' option must be a boolean or object,`,
+        `but received ${typeof options.https}`,
+      );
+    }
+    httpServer = https.createServer(options.https);
+    server = new Server({server: httpServer});
+  } else {
+    httpServer = http.createServer();
+
+    server = new Server({server: httpServer});
+  }
   let connected: WebSocket | null = null;
   server.on('connection', (socket: WebSocket) => {
     if (connected !== null) {
@@ -323,6 +375,114 @@ function startServer(port?: number = 8097) {
       httpServer.close();
     },
   };
+}
+
+function getCertificate() {
+  // Use a self-signed certificate if no certificate was configured.
+  // Cycle certs every 24 hours
+  const certificatePath = join(__dirname, '../ssl/server.cert.pem');
+  const privateKeyPath = join(__dirname, '../ssl/server.private.pem');
+  const publicKeyPath = join(__dirname, '../ssl/server.public.pem');
+
+  let certificateExists = existsSync(certificatePath);
+  if (certificateExists) {
+    const certificateTtl = 1000 * 60 * 60 * 24;
+    const certificateStat = statSync(certificatePath);
+
+    const now = new Date();
+
+    // cert is more than 30 days old, kill it with fire
+    if ((now - certificateStat.ctime) / certificateTtl > 30) {
+      log('SSL Certificate is more than 30 days old. Removing.');
+
+      del.sync([certificatePath], { force: true });
+
+      certificateExists = false;
+    }
+  }
+
+  if (!certificateExists) {
+    log('Generating SSL Certificate');
+
+    const attributes = [{ name: 'commonName', value: 'localhost' }];
+    const pems = createCertificate(attributes);
+
+    writeFileSync(certificatePath, pems.cert, {
+      encoding: 'utf8',
+    });
+    writeFileSync(privateKeyPath, pems.private, {
+      encoding: 'utf8',
+    });
+    writeFileSync(publicKeyPath, pems.public, {
+      encoding: 'utf8',
+    });
+  }
+
+  return {
+    cert: readFileSync(certificatePath),
+    private: readFileSync(privateKeyPath),
+    public: readFileSync(publicKeyPath),
+  };
+}
+
+function createCertificate(attributes) {
+  return selfsigned.generate(attributes, {
+    algorithm: 'sha256',
+    days: 30,
+    keySize: 2048,
+    extensions: [
+      {
+        name: 'keyUsage',
+        keyCertSign: true,
+        digitalSignature: true,
+        nonRepudiation: true,
+        keyEncipherment: true,
+        dataEncipherment: true,
+      },
+      {
+        name: 'extKeyUsage',
+        serverAuth: true,
+        clientAuth: true,
+        codeSigning: true,
+        timeStamping: true,
+      },
+      {
+        name: 'subjectAltName',
+        altNames: [
+          {
+            // type 2 is DNS
+            type: 2,
+            value: 'localhost',
+          },
+          {
+            type: 2,
+            value: 'localhost.localdomain',
+          },
+          {
+            type: 2,
+            value: 'lvh.me',
+          },
+          {
+            type: 2,
+            value: '*.lvh.me',
+          },
+          {
+            type: 2,
+            value: '[::1]',
+          },
+          {
+            // type 7 is IP
+            type: 7,
+            ip: '127.0.0.1',
+          },
+          {
+            type: 7,
+            ip: 'fe80::1',
+          },
+        ],
+      },
+    ],
+  });
 }
 
 const DevtoolsUI = {

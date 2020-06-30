@@ -68,6 +68,7 @@ module.exports = {
             'babel.config.js',
           ),
         },
+        exclude: resolve(__dirname, "../../node_modules"),
       },
       {
         test: /\.css$/,
