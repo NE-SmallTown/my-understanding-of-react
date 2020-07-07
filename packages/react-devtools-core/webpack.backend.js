@@ -62,6 +62,11 @@ module.exports = {
             'babel.config.js',
           ),
         },
+        // Due to some libs like yallist(used by lru-cache) doesn't transform ES6 to ES5
+        // so if we do the transform but doesn't import the polyfill(like `regenerator-runtime`)
+        // it will get broken.(https://github.com/isaacs/node-lru-cache/issues/141)(https://github.com/isaacs/yallist/issues/22)
+        // And because we don't want to import the polyfill, and normally we should not
+        // transform the libs in the node_modules, so we add the exclude here for babel.
         exclude: resolve(__dirname, "../../node_modules"),
       },
     ],
