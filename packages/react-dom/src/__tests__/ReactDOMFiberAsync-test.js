@@ -148,6 +148,14 @@ describe('ReactDOMFiberAsync', () => {
   });
 
   describe('concurrent mode', () => {
+    // 对于离散事件（click，input 这些）都是 user-blocking 优先级（或者是比这还高的 immediate 优先级的其它任务），所以 handleChange 里的 setState
+    // 会走 concurrent 那一套
+    // 而 handleChange 再通过 requestIdleCallback（其实 setTimeout，rAF 都一样）去 setState
+    // 会走同步 batch 更新那一套
+    // 而不是像非 concurrent 里 setTimeout 那样是非 batch 的完全同步（setState 完就 commit 了），它们的区别是
+    // 后者执行完 scheduleCallbackForRoot 会直接调 flushSyncCallbackQueue（SyncCallbackQueue 是 scheduleCallbackForRoot push 进去的）
+    // flushSyncCallbackQueue 会去走 renderRoot 那一套，所以就等价于直接更新了
+    // Tip: 当 scheduledHostCallback 为 null 之后，之前的设置的会自动执行的嵌套 rAF（自动执行）也就停止了，因为直接 return 没有再调用 rAF 了，要等下次有任务的时候才调
     it('does not perform deferred updates synchronously', () => {
       const inputRef = React.createRef();
       const asyncValueRef = React.createRef();
@@ -287,6 +295,8 @@ describe('ReactDOMFiberAsync', () => {
     });
 
     // @gate experimental
+    // unstable_flushControlled 和 flushSync 的区别就是，嵌套的情况下，里面的到底会不会影响外面？
+    // 也就是说，里面的 unstable_flushControlled 执行之后，到底要不要连同外层的一起 flush，还是只 flush 自己这一层？
     it('flushControlled flushes updates before yielding to browser', () => {
       let inst;
       class Counter extends React.Component {
@@ -381,6 +391,40 @@ describe('ReactDOMFiberAsync', () => {
       expect(returnValue).toBe(undefined);
     });
 
+    // 触发事件时（手动点击等等或者 dispatchEvent），会先走一大堆逻辑，最后才走真正的源码里的 dispatchEvent
+
+    // 第一次 dispatch 时，rootsWithPendingDiscreteUpdates 为 null，所以不会调 scheduleSyncCallback & flushSyncCallbackQueue
+    // 最后 setState 后，taskQueue 里有 renderRoot（scheduleCallbackForRoot 里 push 进去的），同时调了 rAF
+    // 第二次 dispatch 时，rootsWithPendingDiscreteUpdates 不为 null，所以会调 scheduleSyncCallback & flushSyncCallbackQueue
+    // 在 scheduleSyncCallback 中往 syncQueue 中 push 了 renderRoot，之后又调了 scheduleCallback，所以 taskQueue 里又增加了 flushSyncCallbackQueueImpl
+    // 所以目前，syncQueue 为 [renderRoot]，taskQueue 为 [renderRoot, flushSyncCallbackQueueImpl]
+
+    // 第二次 dispatch 后，先执行 flushSyncCallbackQueueImpl 后，走 workLoopSync
+    // 发现 updateQueue 里已经有且只有**一个** update （即第一次 dispatch 最后走到了自己代码的 setState，然后 enqueueState）
+    // 这时候还没有调 submitForm（因为前面说了，会先走一大堆逻辑）。于是处理完 updateQueue 之后的 state 为 {active: false}（disableForm 的作用）
+    // 然后去调组件的 render，这时返回的 children 就没有第二个 button 了，接着就正常走，begin & complete & commit
+    // 最后 DOM 上把 button 就干掉了，在这**之后**，才会接着走源码里的 dispatchEvent
+    // 但是这个时候事件代理已经找不到 target fiber 的 listener 了（即 props 里的 onClick，因为 submitForm button 的对应 fiber）
+    // 即没有 _dispatchListeners 了，所以也就不会去触发这个 listener 了（这里即 submitForm）
+
+    // 以上只是执行了 syncQueue，但是 taskQueue 还没动，执行完 syncQueue 之后过一会，rAF 被触发了，进而会去 flushWork，进而走 workLoop 执行 taskQueue
+    // 进而 renderRoot，但是会直接 bailout，为什么呢？
+    // 因为一个 root 被执行了好几次 renderRoot，第一次 renderRoot 实际上就把所有的任务做完了
+    // 所以即使后面再做也根本没任何用，这里就直接 bailout 了
+    // 实际上，firstPendingTime 是在 scheduleWork 里设置的，commitRoot 的时候把它还原
+    // 也就是说，要想不 bailout，必须在这次 renderRoot 之前的 commitRoot 之后，这次 renderRoot 之前有一次 scheduleWork，而不能是直接去调 renderRoot
+    // 所以，先 scheduleWork，然后接着执行两次 renderRoot（不管是同步接连执行，还是分开的异步执行）
+    // 第二次 renderRoot 都会 bailout（因为第二次 renderRoot 前没有 scheduleWork，只有第一次 renderRoot 之前有 scheduleWork）
+    // 所以上面虽然会执行两次 renderRoot，但是第二次直接 bailout 了，可以忽略不计
+
+    // Tip：第二次为什么没有往 taskQueue 里面 push？（因为调的是 scheduleSyncCallback 而不是 scheduleCallback）
+    // Tip: DOM 被干掉了（界面上没有了），但是 DOM 对应的 js 的数据还在（当然 parent 和 sibling 变为 null 了），也就是你仍然可以引用到，所以 React 可以
+    //      一直往 parentNode 找来找到 root，如果找得到说明这个 DOM 还在界面上，如果找不到说明已经被干掉/ummount 了，所以也就不再走捕获和冒泡阶段（当前从逻辑上来说被干掉了自然也不该触发）
+    // Tip：后面执行 taskQueue 的时候实际上并没有 flushSyncCallbackQueueImpl 了（第二个 task 的 callback 为 null）
+    //      这是因为调完 scheduleSyncCallback 之后调 flushSyncCallbackQueue 的时候 cancel 掉了。原因是执行 flushSyncCallbackQueue 就会执行 flushSyncCallbackQueueImpl
+    //      所以不需要后面再执行了，简单的来说就是既可能外部执行完 scheduleSyncCallback 之后马上就调了 flushSyncCallbackQueue，也可能没有调，而是 scheduleSyncCallback 自己设置的 flushSyncCallbackQueueImpl
+    //      后面某个时间到了触发了，谁先执行就清空，没必要执行两次 flushSyncCallbackQueueImpl
+    // DOM.render 的流程也是这样吗？应该不是，只是期望的结果是一样的，所以 concurrent 才需要进行这样的流程保证这种一样？贴对比图
     it('ignores discrete events on a pending removed element', async () => {
       const disableButtonRef = React.createRef();
       const submitButtonRef = React.createRef();

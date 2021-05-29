@@ -451,6 +451,10 @@ function reset() {
 }
 
 // Should only be used via an assertion helper that inspects the yielded values.
+/*   对于 scheduler 包相关的部分   */
+// 实际上，各种 flushXXX 才是真正起的 scheduler 里的 requestHostCallback 里的 postmessage/raf & postmessage 的作用
+// 剩下的和浏览器环境基本没区别，都是去同步的或者同步循环的触发 scheduledCallback，区别只是 shouldYieldToHost 的条件有些不同，根据测试的需求来
+// 因为测试时需要的是自己手动选择一个时机去触发 scheduledCallback
 function unstable_flushNumberOfYields(count: number): void {
   if (isFlushing) {
     throw new Error('Already flushing work.');

@@ -44,6 +44,9 @@ describe('ReactExpiration', () => {
         }
       } else {
         let ping;
+        // ping 的意思，是指通知 suspense 的 root，让它得到通知后自己去 retry 尝试再次渲染
+        // 为什么要再次渲染了，因为 suspense 的数据返回了或者说 promise resolve 了，可以按照正常流程去
+        // 渲染组件了
         const promise = new Promise(resolve => (ping = resolve));
         const newRecord = {
           status: 'pending',

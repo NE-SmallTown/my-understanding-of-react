@@ -91,6 +91,17 @@ const localClearTimeout =
 const localSetImmediate =
   typeof setImmediate !== 'undefined' ? setImmediate : null; // IE and Node.js + jsdom
 
+// deadline - now
+// 即返回 rafTimestamp + activeFrameTime(启发式的，模式是 33ms) - performance.now()
+// 注意 rafTimestamp 和 performance.now() 不一定是相等的，甚至可能小于 performance.now()
+// https://stackoverflow.com/questions/38360250/requestanimationframe-now-vs-performance-now-time-discrepancy
+// https://cs.chromium.org/chromium/src/third_party/catapult/third_party/polymer/components/web-animations-js/src/tick.js?type=cs&q=_needsTick&sq=package:chromium&g=0&l=20
+// 自己的 demo：https://jsfiddle.net/heaven_xz/e4og01hp/
+// 原理是 rAF 的回调里面 timestamp 是当前 tick 处理所有注册的 rAF 回调的开始时间，即所有注册的 rAF 的 timestamp
+// 都是相等的。所以如果当前的 tick 中有某个注册 rAF 花费的时间过长，那么到处理当前 tick 的下一个注册的 rAF 的时候
+// timestamp - performance.now() 很可能就是负数了（正常花费小的情况下肯定是正数，因为有 MAGIC_NUMBER_OFFSET）
+// 为负数就说明当前帧剩余时间不够用来处理这个任务了，直接跳过
+// 概括来说就是返回预计的当前帧要消耗多少时间给调用方（即调用 unstable_scheduleCallback 的人）
 function advanceTimers(currentTime) {
   // Check for tasks that are no longer delayed and add them to the queue.
   let timer = peek(timerQueue);
@@ -131,6 +142,32 @@ function handleTimeout(currentTime) {
     }
   }
 }
+
+// 之前的已经删掉的 rAF 的方案的注释
+// timeRemaining = function() {
+//   if (
+//     firstCallbackNode !== null &&
+//     firstCallbackNode.expirationTime < currentExpirationTime
+//   ) {
+//     // A higher priority callback was scheduled. Yield so we can switch to
+//     // working on that.
+//     return 0;
+//   }
+//   // We assume that if we have a performance timer that the rAF callback
+//   // gets a performance timer value. Not sure if this is always true.
+//   // 即返回 rafTimestamp + activeFrameTime(启发式的，模式是 33ms) - performance.now()
+//   // 注意 rafTimestamp 和 performance.now() 不一定是相等的，甚至可能小于 performance.now()
+//   // https://stackoverflow.com/questions/38360250/requestanimationframe-now-vs-performance-now-time-discrepancy
+//   // https://cs.chromium.org/chromium/src/third_party/catapult/third_party/polymer/components/web-animations-js/src/tick.js?type=cs&q=_needsTick&sq=package:chromium&g=0&l=20
+//   // 自己的 demo：https://jsfiddle.net/heaven_xz/e4og01hp/
+//   // 原理是 rAF 的回调里面 timestamp 是当前 tick 处理所有注册的 rAF 回调的开始时间，即所有注册的 rAF 的 timestamp
+//   // 都是相等的。所以如果当前的 tick 中有某个注册 rAF 花费的时间过长，那么到处理当前 tick 的下一个注册的 rAF 的时候
+//   // timestamp - performance.now() 很可能就是负数了（正常花费小的情况下肯定是正数，因为有 MAGIC_NUMBER_OFFSET）
+//   // 为负数就说明当前帧剩余时间不够用来处理这个任务了，直接跳过
+//   // 概括来说就是返回预计的当前帧要消耗多少时间给调用方（即调用 unstable_scheduleCallback 的人）
+//   var remaining = getFrameDeadline() - performance.now();
+//   return remaining > 0 ? remaining : 0;
+// };
 
 function flushWork(hasTimeRemaining, initialTime) {
   if (enableProfiling) {
